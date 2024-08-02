@@ -14,21 +14,23 @@
     "unlimited_access": false,
     "user_data": {
         "7342561936": {
-            "last_activity": "2024-08-02T17:09:03.435211",
             "username": null,
-            "last_use": "2024-08-02T17:09:03.435211",
-            "use_count": 1
+            "first_use": "2024-08-02T22:57:01.164202",
+            "last_use": "2024-08-02T22:57:06.143265",
+            "use_count": 2,
+            "last_activity": "2024-08-02T22:57:06.143265"
         },
         "7342561936": {
-            "last_activity": "2024-08-02T17:10:44.304464",
-            "username": null,
-            "last_use": "2024-08-02T17:10:44.304464",
-            "use_count": 3
+            "last_activity": "2024-08-02T23:01:13.773957"
         }
     },
     "maintenance_mode": false,
     "premium_users": [],
-    "user_requests": {},
+    "user_requests": {
+        "7342561936": [
+            1722628867.38376
+        ]
+    },
     "premium_daily_limit": 50,
     "unlimited_access_premium_plus": false,
     "premium_plus_users": [],
