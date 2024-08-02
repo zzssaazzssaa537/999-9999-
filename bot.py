@@ -13,7 +13,6 @@ import subprocess
 import sys
 import io
 from contextlib import redirect_stdout, redirect_stderr
-import numpy as np  # استبدال torch بـ numpy
 
 # Define the token directly in the code
 TOKEN = "7269916681:AAHLLxIeyWYsnzunyFqEBIriqaD0nSb1Spk"
@@ -22,7 +21,6 @@ OWNER_ID = 7342561936  # Replace with your own Telegram ID
 # Tokens for report and feedback bots
 REPORT_BOT_TOKEN = "7261277394:AAEALpqckRG2McndiD8dhuVaqn-veZ_9nbo"
 FEEDBACK_BOT_TOKEN = "7426243703:AAG91JEHkvMV417YanjSWhsAmTKTkwCDaag"
-RECOMMENDATION_BOT_TOKEN = "7307828512:AAF5R0by_EIT52rHlqt068b9qkvlryguaJQ"
 
 # Create bot instance
 bot = Bot(token=TOKEN)
@@ -70,13 +68,12 @@ data = {
 def install_missing_libraries():
     required_libraries = [
         "python-telegram-bot",
-        "aiohttp",
-        "transformers",
-        "numpy"
+        "aiohttp"
     ]
 
-    with open('requirements.txt', 'w') as file:
-        file.write('\n'.join(required_libraries))
+    if os.path.exists('requirements.txt'):
+        with open('requirements.txt', 'r') as file:
+            required_libraries += [line.strip() for line in file if line.strip()]
 
     installed_libraries = subprocess.check_output([sys.executable, '-m', 'pip', 'freeze']).decode().split('\n')
     installed_libraries = [pkg.split('==')[0] for pkg in installed_libraries]
@@ -87,6 +84,8 @@ def install_missing_libraries():
         f = io.StringIO()  # Create a StringIO object to capture stdout and stderr
         with redirect_stdout(f), redirect_stderr(f):
             subprocess.check_call([sys.executable, '-m', 'pip', 'install', *missing_libraries])
+        with open('requirements.txt', 'w') as file:
+            file.write('\n'.join(required_libraries))
 
 # Ensure libraries are installed
 install_missing_libraries()
@@ -101,39 +100,22 @@ print("The bot is running successfully.")
 
 # Ensure necessary directories and files are present
 def ensure_directories_and_files():
-    try:
-        if not os.path.exists(ACCOUNTS_DIR):
-            os.makedirs(ACCOUNTS_DIR)
-            print(f"Created directory: {ACCOUNTS_DIR}")
-        else:
-            print(f"Directory already exists: {ACCOUNTS_DIR}")
+    if not os.path.exists(ACCOUNTS_DIR):
+        os.makedirs(ACCOUNTS_DIR)
 
-        # Create essential txt files if they don't exist
-        for filename in ESSENTIAL_FILES:
-            file_path = os.path.join(ACCOUNTS_DIR, filename)
-            if not os.path.exists(file_path):
-                with open(file_path, 'w') as f:
-                    pass
-                print(f"Created file: {file_path}")
-            else:
-                print(f"File already exists: {file_path}")
+    # Create essential txt files if they don't exist
+    for filename in ESSENTIAL_FILES:
+        file_path = os.path.join(ACCOUNTS_DIR, filename)
+        if not os.path.exists(file_path):
+            with open(file_path, 'w') as f:
+                pass
 
-        # Create JSON file if it doesn't exist
-        if not os.path.exists('data.json'):
-            data_to_save = data.copy()
-            data_to_save['blocked_users'] = list(data_to_save['blocked_users'])
-            data_to_save['allowed_channels'] = list(data_to_save['allowed_channels'])
-            data_to_save['premium_users'] = list(data_to_save['premium_users'])
-            data_to_save['premium_plus_users'] = list(data_to_save['premium_plus_users'])
-            data_to_save['admins'] = list(data_to_save['admins'])
-            
-            with open('data.json', 'w') as f:
-                json.dump(data_to_save, f)
-            print("Created file: data.json")
-        else:
-            print("File already exists: data.json")
-    except Exception as e:
-        logger.error(f"Error ensuring directories and files: {e}")
+    # Create JSON file if it doesn't exist
+    if not os.path.exists('data.json'):
+        with open('data.json', 'w') as f:
+            json.dump(data, f)
+
+ensure_directories_and_files()
 
 # Load data from file
 def load_data():
@@ -160,16 +142,16 @@ def load_data():
 
 # Save data to file
 def save_data():
-    data_to_save = data.copy()
-    data_to_save['blocked_users'] = list(data_to_save['blocked_users'])
-    data_to_save['allowed_channels'] = list(data_to_save['allowed_channels'])
-    data_to_save['premium_users'] = list(data_to_save['premium_users'])
-    data_to_save['premium_plus_users'] = list(data_to_save['premium_plus_users'])
-    data_to_save['admins'] = list(data_to_save['admins'])
-    data_to_save['user_requests'] = dict(data_to_save['user_requests'])
-    data_to_save['user_daily_limits'] = {k: (v[0].isoformat(), v[1]) for k, v in data_to_save['user_daily_limits'].items()}
-
     with open('data.json', 'w', encoding='utf-8') as file:
+        # Convert sets and defaultdicts to lists and dicts for JSON serialization
+        data_to_save = data.copy()
+        data_to_save['blocked_users'] = list(data_to_save['blocked_users'])
+        data_to_save['allowed_channels'] = list(data_to_save['allowed_channels'])
+        data_to_save['premium_users'] = list(data_to_save['premium_users'])
+        data_to_save['premium_plus_users'] = list(data_to_save['premium_plus_users'])
+        data_to_save['user_requests'] = dict(data_to_save['user_requests'])
+        data_to_save['user_daily_limits'] = {k: (v[0].isoformat(), v[1]) for k, v in data_to_save['user_daily_limits'].items()}
+        data_to_save['admins'] = list(data_to_save['admins'])
         json.dump(data_to_save, file, ensure_ascii=False, indent=4)
 
 # Load data when the bot starts
@@ -199,9 +181,6 @@ def is_allowed_channel(chat_id):
     return data['allow_all_channels'] or chat_id in data['allowed_channels']
 
 def is_rate_limited(user_id):
-    if is_owner(user_id):
-        return False
-
     current_time = time.time()
     if user_id in data['user_requests']:
         requests = data['user_requests'][user_id]
@@ -336,19 +315,18 @@ def update_user_data(user_id, username):
             "first_use": current_time,
             "last_use": current_time,
             "use_count": 1,
-            "last_activity": current_time  # إضافة حقل last_activity
+            "last_activity": current_time  # Add last_activity field
         }
     else:
-        user_data = data['user_data'][user_id]
-        user_data["username"] = username  # تأكد من تحديث اسم المستخدم
-        user_data["last_use"] = current_time
-        user_data["use_count"] = user_data.get("use_count", 0) + 1
-        user_data["last_activity"] = current_time  # تحديث last_activity
+        data['user_data'][user_id]["username"] = username  # Ensure the username is updated
+        data['user_data'][user_id]["last_use"] = current_time
+        data['user_data'][user_id]["use_count"] += 1
+        data['user_data'][user_id]["last_activity"] = current_time  # Update last_activity
     save_data()
 
 def update_last_activity(user_id):
     current_time = datetime.now().isoformat()
-    if user_id in data['user_data']]:
+    if user_id in data['user_data']:
         data['user_data'][user_id]['last_activity'] = current_time
     else:
         data['user_data'][user_id] = {"last_activity": current_time}
@@ -356,28 +334,10 @@ def update_last_activity(user_id):
 
 def log_activity(update):
     user = update.message.from_user
-    logger.info(f"User {user.id} - {user.username}: {update.message.text} ")
+    logger.info(f"User {user.id} - {user.username}: {update.message.text}")
 
 def detect_unusual_activity(user_id):
-    if is_owner(user_id):
-        return False
-    
-    if user_id not in data['user_data']:
-        return False
-    
-    user_data = data['user_data'][user_id]
-    current_time = datetime.now()
-
-    # Check if the user is sending too many requests
-    if is_rate_limited(user_id):
-        return True
-    
-    # Check if the user account is new (e.g., created within the last 2 days)
-    account_age_limit = timedelta(days=data.get('fake_account_age_limit', 2))
-    account_creation_time = datetime.fromisoformat(user_data.get('first_use', current_time.isoformat()))
-    if current_time - account_creation_time < account_age_limit:
-        return True
-    
+    # Add logic to detect unusual activity
     return False
 
 def get_statistics():
@@ -471,11 +431,11 @@ async def timeout_user(update: Update, context: CallbackContext):
         duration_str = args[1]
 
         if duration_str.endswith('m'):
-            timeout_duration = timedelta(minutes(int(duration_str[:-1]))
+            timeout_duration = timedelta(minutes=int(duration_str[:-1]))
         elif duration_str.endswith('h'):
-            timeout_duration = timedelta(hours(int(duration_str[:-1]))
+            timeout_duration = timedelta(hours=int(duration_str[:-1]))
         elif duration_str.endswith('d'):
-            timeout_duration = timedelta(days(int(duration_str[:-1]))
+            timeout_duration = timedelta(days=int(duration_str[:-1]))
         else:
             await update.message.reply_text("Invalid duration format. Use 'm' for minutes, 'h' for hours, or 'd' for days (e.g., 1h for 1 hour).")
             return
@@ -597,7 +557,7 @@ async def handle_owner_commands(update: Update, context: CallbackContext):
         await update.message.reply_text(f"Section '{section_name}' selected. Now, please upload the txt file with accounts:")
         context.user_data['awaiting_upload'] = True
         context.user_data['awaiting_section_name'] = False
-    elif context.user_data.get('awaiting_reset_user_limit'):
+    elif context.user_data.get('awaiting_upload'):
         await update.message.reply_text("Please upload the txt file with accounts.")
     else:
         total_users, active_users = get_statistics()
@@ -618,7 +578,7 @@ async def handle_owner_commands(update: Update, context: CallbackContext):
             [InlineKeyboardButton("Add Admin", callback_data='add_admin')],
             [InlineKeyboardButton("Remove Admin", callback_data='remove_admin')],
             [InlineKeyboardButton("Monitoring", callback_data='monitoring')],
-            [InlineKeyboardButton("View Sections", callback_data='view_sections')]
+            [InlineKeyboardButton("Show Account Statistics", callback_data='show_account_statistics')]
         ]
         reply_markup = InlineKeyboardMarkup(keyboard)
         await update.message.reply_text(f'Owner Commands:\nTotal Users: {total_users}\nActive Users: {active_users}', reply_markup=reply_markup)
@@ -761,8 +721,7 @@ async def show_feedback_menu(update: Update, context: CallbackContext):
 
     keyboard = [
         [InlineKeyboardButton("Report Issue", callback_data='report_issue')],
-        [InlineKeyboardButton("Give Feedback", callback_data='give_feedback')],
-        [InlineKeyboardButton("Submit Recommendation", callback_data='submit_recommendation')]
+        [InlineKeyboardButton("Give Feedback", callback_data='give_feedback')]
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
     await update.message.reply_text('Please choose an option:', reply_markup=reply_markup)
@@ -784,15 +743,13 @@ async def handle_menu_choice(update: Update, context: CallbackContext):
         await query.message.reply_text("The bot is currently under maintenance. Please try again later.")
         return
 
-    if not is_admin(user_id) and choice in ['block_user', 'unblock_user', 'timeout_user', 'remove_timeout', 'list_blocked', 'add_section', 'delete_section', 'upload_accounts', 'set_daily_limit', 'set_unlimited_access', 'reset_all_free_limits', 'reset_all_premium_limits', 'reset_all_premium_plus_limits', 'enable_maintenance', 'disable_maintenance', 'free_user_management', 'premium_user_management', 'premium_plus_user_management', 'add_premium_user', 'remove_premium_user', 'set_premium_daily_limit', 'add_premium_plus_user', 'remove_premium_plus_user', 'set_premium_plus_daily_limit', 'set_unlimited_access_premium_plus', 'add_admin', 'remove_admin', 'monitoring', 'view_sections']:
+    if not is_admin(user_id) and choice in ['block_user', 'unblock_user', 'timeout_user', 'remove_timeout', 'list_blocked', 'add_section', 'delete_section', 'upload_accounts', 'set_daily_limit', 'set_unlimited_access', 'reset_all_free_limits', 'reset_all_premium_limits', 'reset_all_premium_plus_limits', 'enable_maintenance', 'disable_maintenance', 'free_user_management', 'premium_user_management', 'premium_plus_user_management', 'add_premium_user', 'remove_premium_user', 'set_premium_daily_limit', 'add_premium_plus_user', 'remove_premium_plus_user', 'set_premium_plus_daily_limit', 'set_unlimited_access_premium_plus', 'add_admin', 'remove_admin', 'show_account_statistics']:
         await query.message.reply_text("You do not have the necessary permissions to access this command.")
         return
 
     if choice == 'monitoring':
         total_users, active_users = get_statistics()
         await query.message.reply_text(f'Monitoring:\nTotal Users: {total_users}\nActive Users: {active_users}')
-    elif choice == 'view_sections':
-        await view_sections(update, context)
     elif choice.startswith('get_account_'):
         account_type = choice.split('get_account_')[1]
         username = query.from_user.username
@@ -800,7 +757,7 @@ async def handle_menu_choice(update: Update, context: CallbackContext):
         daily_limit_count = check_daily_limit(user_id)
         if user_id not in data['premium_users'] and user_id not in data['premium_plus_users'] and daily_limit_count >= data['daily_limit'] and not data['unlimited_access']:
             last_access_time, _ = data['user_daily_limits'][user_id]
-            next_access_time = last_access_time + timedelta(days=(1))
+            next_access_time = last_access_time + timedelta(days=1)
             await query.message.reply_text(f"You have reached your daily limit. You can use the bot again at {next_access_time.strftime('%Y-%m-%d %H:%M:%S')}.")
             return
         elif user_id in data['premium_users'] and daily_limit_count >= data['premium_daily_limit']:
@@ -816,7 +773,7 @@ async def handle_menu_choice(update: Update, context: CallbackContext):
             await query.message.reply_text(f"Account Info:\n{parsed_info}\nAccount Type: {account_type}")
             await query.message.reply_text(
                 f"Thank you for using the bot. Here is your account information:\n{query.from_user.first_name}!\n"
-                "Check out our main channel: https://t.me/S_D_C_D"
+                "Check out our main channel: https://t.me/alphhaabot"
             )
             increment_daily_limit(user_id)
             update_user_data(user_id, username)
@@ -841,7 +798,7 @@ async def handle_menu_choice(update: Update, context: CallbackContext):
             await query.message.reply_text(f"Premium Account Info:\n{parsed_info}\nAccount Type: {account_type}")
             await query.message.reply_text(
                 f"Thank you for using the premium section. Here is your account information:\n{query.from_user.first_name}!\n"
-                "Check out our main channel: https://t.me/S_D_C_D"
+                "Check out our main channel: https://t.me/alphhaabot"
             )
             increment_daily_limit(user_id)
             update_user_data(user_id, username)
@@ -866,7 +823,7 @@ async def handle_menu_choice(update: Update, context: CallbackContext):
             await query.message.reply_text(f"Premium Plus Account Info:\n{parsed_info}\nAccount Type: {account_type}")
             await query.message.reply_text(
                 f"Thank you for using the premium plus section. Here is your account information:\n{query.from_user.first_name}!\n"
-                "Check out our main channel: https://t.me/S_D_C_D"
+                "Check out our main channel: https://t.me/alphhaabot"
             )
             increment_daily_limit(user_id)
             update_user_data(user_id, username)
@@ -882,9 +839,6 @@ async def handle_menu_choice(update: Update, context: CallbackContext):
     elif choice == 'give_feedback':
         await query.message.reply_text("Please provide your feedback:")
         context.user_data['awaiting_feedback'] = True
-    elif choice == 'submit_recommendation':
-        await query.message.reply_text("Please provide your recommendation:")
-        context.user_data['awaiting_recommendation'] = True
     elif choice == 'block_user':
         await query.message.reply_text("Please enter the user ID to block:")
         context.user_data['awaiting_block_user_id'] = True
@@ -982,6 +936,14 @@ async def handle_menu_choice(update: Update, context: CallbackContext):
     elif choice == 'remove_admin':
         await query.message.reply_text("Please enter the user ID to remove from admin:")
         context.user_data['awaiting_remove_admin'] = True
+    elif choice == 'show_account_statistics':
+        account_stats = ""
+        for account_type in data['account_types']:
+            filename = os.path.join(ACCOUNTS_DIR, f'{account_type}.txt')
+            with open(filename, 'r', encoding='utf-8') as file:
+                count = len(file.readlines())
+            account_stats += f"{account_type}: {count} accounts\n"
+        await query.message.reply_text(f"Account Statistics:\n{account_stats}")
 
 async def handle_user_input(update: Update, context: CallbackContext):
     user_id = update.message.from_user.id
@@ -990,11 +952,7 @@ async def handle_user_input(update: Update, context: CallbackContext):
     update_last_activity(user_id)
     log_activity(update)
     if detect_unusual_activity(user_id):
-        data['blocked_users'].add(user_id)
-        save_data()
-        reason = "Unusual activity detected"
-        await context.bot.send_message(chat_id=OWNER_ID, text=f"User with ID {user_id} has been blocked.\nReason: {reason}")
-        await update.message.reply_text("Suspicious activity detected. You have been blocked. The owner has been notified.")
+        await update.message.reply_text("Suspicious activity detected. Action will be taken.")
         return
 
     timeout_end = is_blocked(user_id)
@@ -1110,62 +1068,62 @@ async def handle_user_input(update: Update, context: CallbackContext):
             await update.message.reply_text("Invalid input. Please enter 'on' or 'off'.")
         save_data()
         context.user_data['awaiting_unlimited_access'] = False
-    elif context.user_data.get('awaiting_reset_user_limit']):
+    elif context.user_data.get('awaiting_reset_user_limit'):
         target_user_id = int(text)
         reset_user_limit(target_user_id)
         context.user_data['awaiting_reset_user_limit'] = False
         await update.message.reply_text(f"Daily limit for user with ID {target_user_id} has been reset.")
-    elif context.user_data.get('awaiting_issue']):
+    elif context.user_data.get('awaiting_issue'):
         issue = text.strip()
         report_bot = Bot(token=REPORT_BOT_TOKEN)
         await report_bot.send_message(chat_id=OWNER_ID, text=f"Issue Report from User ID {user_id}:\n{issue}")
         context.user_data['awaiting_issue'] = False
         await update.message.reply_text("Thank you for reporting the issue. It has been forwarded to the support team.")
-    elif context.user_data.get('awaiting_feedback']):
+    elif context.user_data.get('awaiting_feedback'):
         feedback = text.strip()
         feedback_bot = Bot(token=FEEDBACK_BOT_TOKEN)
         await feedback_bot.send_message(chat_id=OWNER_ID, text=f"Feedback from User ID {user_id}:\n{feedback}")
         context.user_data['awaiting_feedback'] = False
         await update.message.reply_text("Thank you for your feedback. It has been forwarded to the team.")
-    elif context.user_data.get('awaiting_add_premium_user']):
+    elif context.user_data.get('awaiting_add_premium_user'):
         target_user_id = int(text)
         data['premium_users'].add(target_user_id)
         reset_user_limit(target_user_id)  # Reset limit when user is added to premium
         save_data()
         context.user_data['awaiting_add_premium_user'] = False
         await update.message.reply_text(f"User with ID {target_user_id} has been added as premium.")
-    elif context.user_data.get('awaiting_reset_user_limit']):
+    elif context.user_data.get('awaiting_remove_premium_user'):
         target_user_id = int(text)
         data['premium_users'].discard(target_user_id)
         reset_user_limit(target_user_id)  # Reset limit when user is removed from premium
         save_data()
         context.user_data['awaiting_remove_premium_user'] = False
         await update.message.reply_text(f"User with ID {target_user_id} has been removed from premium.")
-    elif context.user_data.get('awaiting_set_premium_daily_limit']):
+    elif context.user_data.get('awaiting_set_premium_daily_limit'):
         data['premium_daily_limit'] = int(text)
         save_data()
         context.user_data['awaiting_set_premium_daily_limit'] = False
         await update.message.reply_text(f"Premium daily limit set to {data['premium_daily_limit']} accounts per day.")
-    elif context.user_data.get('awaiting_add_premium_plus_user']):
+    elif context.user_data.get('awaiting_add_premium_plus_user'):
         target_user_id = int(text)
         data['premium_plus_users'].add(target_user_id)
         reset_user_limit(target_user_id)  # Reset limit when user is added to premium plus
         save_data()
         context.user_data['awaiting_add_premium_plus_user'] = False
         await update.message.reply_text(f"User with ID {target_user_id} has been added as premium plus.")
-    elif context.user_data.get('awaiting_remove_premium_plus_user']):
+    elif context.user_data.get('awaiting_remove_premium_plus_user'):
         target_user_id = int(text)
         data['premium_plus_users'].discard(target_user_id)
         reset_user_limit(target_user_id)  # Reset limit when user is removed from premium plus
         save_data()
         context.user_data['awaiting_remove_premium_plus_user'] = False
         await update.message.reply_text(f"User with ID {target_user_id} has been removed from premium plus.")
-    elif context.user_data.get('awaiting_set_premium_plus_daily_limit']):
+    elif context.user_data.get('awaiting_set_premium_plus_daily_limit'):
         data['premium_plus_daily_limit'] = int(text)
         save_data()
         context.user_data['awaiting_set_premium_plus_daily_limit'] = False
         await update.message.reply_text(f"Premium plus daily limit set to {data['premium_plus_daily_limit']} accounts per day.")
-    elif context.user_data.get('awaiting_unlimited_access_premium_plus']):
+    elif context.user_data.get('awaiting_unlimited_access_premium_plus'):
         if text.lower() == 'on':
             data['unlimited_access_premium_plus'] = True
             await update.message.reply_text("Unlimited access for premium plus users enabled.")
@@ -1176,47 +1134,64 @@ async def handle_user_input(update: Update, context: CallbackContext):
             await update.message.reply_text("Invalid input. Please enter 'on' or 'off'.")
         save_data()
         context.user_data['awaiting_unlimited_access_premium_plus'] = False
-    elif context.user_data.get('awaiting_add_admin']):
+    elif context.user_data.get('awaiting_add_admin'):
         target_user_id = int(text)
-        data['admins'].add(target_user_id)
-        save_data()
-        context.user_data['awaiting_add_admin'] = False
-        await update.message.reply_text(f"User with ID {target_user_id} has been added as admin.")
-    elif context.user_data.get('awaiting_remove_admin']):
+        if target_user_id == OWNER_ID:
+            await update.message.reply_text("Cannot add the owner as admin.")
+        else:
+            data['admins'].add(target_user_id)
+            save_data()
+            context.user_data['awaiting_add_admin'] = False
+            await update.message.reply_text(f"User with ID {target_user_id} has been added as admin.")
+    elif context.user_data.get('awaiting_remove_admin'):
         target_user_id = int(text)
-        data['admins'].discard(target_user_id)
-        save_data()
-        context.user_data['awaiting_remove_admin'] = False
-        await update.message.reply_text(f"User with ID {target_user_id} has been removed from admin.")
+        if target_user_id == OWNER_ID:
+            await update.message.reply_text("Cannot remove the owner as admin.")
+        else:
+            data['admins'].discard(target_user_id)
+            save_data()
+            context.user_data['awaiting_remove_admin'] = False
+            await update.message.reply_text(f"User with ID {target_user_id} has been removed from admin.")
 
-async def view_sections(update: Update, context: CallbackContext):
-    sections = data['account_types']
-    await update.message.reply_text("Available Sections:\n" + "\n".join(sections))
+async def set_commands(application: Application):
+    await application.bot.set_my_commands([
+        BotCommand("start", "Start the bot"),
+        BotCommand("free", "Show account types menu"),
+        BotCommand("feedbackmenu", "Show feedback and report menu"),
+        BotCommand("ownermenu", "Show owner commands menu (owner only)"),
+        BotCommand("premium", "Access premium features"),
+        BotCommand("premium_plus", "Access premium plus features")
+    ])
 
-# Main function to set up the bot and run it
-async def main():
+async def update_active_users(application: Application):
+    while True:
+        total_users, active_users = get_statistics()
+        print(f"Total Users: {total_users}, Active Users: {active_users}")
+        await asyncio.sleep(60)  # تحقق كل 60 ثانية
+
+def main():
     application = Application.builder().token(TOKEN).build()
 
     application.add_handler(CommandHandler("start", start))
     application.add_handler(CommandHandler("premium", premium))
     application.add_handler(CommandHandler("premium_plus", premium_plus))
-    application.add_handler(CommandHandler("block_user", block_user))
+    application.add_handler(CommandHandler("blockuser", block_user))
     application.add_handler(CommandHandler("unblock_user", unblock_user))
     application.add_handler(CommandHandler("timeout_user", timeout_user))
     application.add_handler(CommandHandler("remove_timeout", remove_timeout))
-    application.add_handler(CommandHandler("list_blocked", list_blocked))
-    application.add_handler(CommandHandler("add_section", add_section))
-    application.add_handler(CommandHandler("delete_section", delete_section))
-    application.add_handler(CommandHandler("upload_accounts", handle_upload_section))
+    application.add_handler(CommandHandler("listblocked", list_blocked))
+    application.add_handler(CommandHandler("free", show_menu))
     application.add_handler(CommandHandler("feedbackmenu", show_feedback_menu))
-    application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_user_input))
+    application.add_handler(CommandHandler("ownermenu", handle_owner_commands))
+    application.add_handler(CommandHandler("deletesection", delete_section))
     application.add_handler(CallbackQueryHandler(handle_menu_choice))
+    application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_user_input))
     application.add_handler(MessageHandler(filters.Document.ALL, handle_document))
 
-    await application.start()
-    await application.updater.start_polling()
-    await application.idle()
+    application.job_queue.run_once(lambda context: asyncio.create_task(set_commands(application)), 0)
+    application.job_queue.run_once(lambda context: asyncio.create_task(update_active_users(application)), 0)
 
-if __name__ == '__main__':
-    ensure_directories_and_files()
-    asyncio.run(main())
+    application.run_polling()
+
+if __name__ == "__main__":
+    main()
